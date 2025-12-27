@@ -1,0 +1,14 @@
+# Ambiente virtual
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Outputs gerados
+*.pkl
+*.zip
+
+# IDEs
+.vscode/
