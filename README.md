@@ -1,7 +1,4 @@
-Perfeito. Não preciso de mais nenhuma informação — já tenho tudo o que é necessário.
-Abaixo está **UM ÚNICO BLOCO**, **UMA ÚNICA LOUSA**, **100% Markdown**, **SEM TEXTO FORA**, **SEM QUEBRAS**, pronto para copiar e colar num ficheiro `.md` (ex.: `Info/overview.md` ou similar).
 
-````md
 # Visão Geral do Projeto — IAPV Parte 3 (Aprendizagem por Imitação)
 
 Este documento descreve o estado atual do projeto, o que já foi implementado, a organização do repositório, a função de cada componente e o que ainda falta desenvolver. O objetivo é permitir que qualquer pessoa consiga compreender rapidamente o projeto e dar-lhe seguimento.
