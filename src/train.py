@@ -3,34 +3,28 @@ import pickle
 import numpy as np
 import gymnasium as gym
 import torch
+import time
 
-from imitation.data import rollout
 from imitation.algorithms import bc
 from imitation.algorithms.adversarial.gail import GAIL
 from imitation.rewards.reward_nets import BasicRewardNet
 from imitation.util.networks import RunningNorm
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.evaluation import evaluate_policy
-
 from envs.custom_grid_env import CustomGridEnv
 
-# Correção de Segurança para carregar modelos no PyTorch 2.6+
+# Segurança para PyTorch 2.6
 torch.serialization.add_safe_globals([np.ndarray, np.dtype])
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Treino de Políticas (BC, GAIL, PPO)")
-
-    # Tornamos o --file opcional apenas para o PPO
-    parser.add_argument("--file", type=str, help="Ficheiro .pkl de demonstrações D")
-    parser.add_argument("--output", required=True, type=str, help="Caminho para a policy O")
-    parser.add_argument("--gym", required=True, choices=["CartPole", "Custom"], help="Ambiente G")
-    # ADICIONADO 'PPO' às escolhas permitidas
-    parser.add_argument("--algorithm", required=True, choices=["BC", "GAIL", "PPO"], help="Algoritmo A")
-
+    parser = argparse.ArgumentParser(description="Treino de Políticas")
+    parser.add_argument("--file", type=str, help="Ficheiro .pkl de demonstrações")
+    parser.add_argument("--output", required=True, type=str, help="Caminho para a policy")
+    parser.add_argument("--gym", required=True, choices=["CartPole", "Custom"])
+    parser.add_argument("--algorithm", required=True, choices=["BC", "GAIL", "PPO"])
     args = parser.parse_args()
 
-    # 1. Configuração do Ambiente
     def make_env():
         if args.gym == "CartPole":
             import seals
@@ -40,30 +34,22 @@ def main():
 
     env = DummyVecEnv([make_env])
 
-    # 2. Lógica específica para PPO (Treino do Perito)
+    # Arquitetura padrão do BC na biblioteca imitation é [32, 32]
+    custom_net_arch = dict(net_arch=[32, 32])
+
     if args.algorithm == "PPO":
-        print(f"\n--- Treinando PPO experto no ambiente {args.gym} ---")
-        model = PPO("MlpPolicy", env, verbose=1, ent_coef=0.1, learning_rate=0.0003)
-        model.learn(total_timesteps=100000)
+        model = PPO("MlpPolicy", env, verbose=1)
+        model.learn(total_timesteps=50000)
         model.save(args.output)
-        print(f"Sucesso: Modelo guardado em {args.output}")
+        print(f"Sucesso: PPO guardado em {args.output}")
         return
 
-    # 3. Carregar demonstrações para BC e GAIL
     if not args.file:
-        print("Erro: BC e GAIL exigem um ficheiro de demonstrações (--file).")
+        print("Erro: BC e GAIL exigem --file")
         return
+    with open(args.file, "rb") as f:
+        trajectories = pickle.load(f)
 
-    try:
-        with open(args.file, "rb") as f:
-            trajectories = pickle.load(f)
-        print(f"Sucesso: {len(trajectories)} trajetórias carregadas.")
-    except Exception as e:
-        print(f"Erro ao carregar ficheiro: {e}")
-        return
-
-    # 4. Treino de Imitação
-    policy = None
     if args.algorithm == "BC":
         print("A iniciar treino BC...")
         bc_trainer = bc.BC(
@@ -72,12 +58,17 @@ def main():
             demonstrations=trajectories,
             rng=np.random.default_rng(0)
         )
-        bc_trainer.train(n_epochs=30)
-        policy = bc_trainer.policy
+        bc_trainer.train(n_epochs=50)
+
+        # AJUSTE AQUI: Criamos o PPO com a mesma arquitetura [32, 32] do BC
+        model = PPO("MlpPolicy", env, verbose=0, policy_kwargs=custom_net_arch)
+        model.policy = bc_trainer.policy
+        model.save(args.output)
+        print(f"Sucesso: BC guardado com arquitetura [32, 32] em {args.output}")
 
     elif args.algorithm == "GAIL":
         print("A iniciar treino GAIL...")
-        learner = PPO("MlpPolicy", env, verbose=1, ent_coef=0.1)
+        learner = PPO("MlpPolicy", env, verbose=1)
         reward_net = BasicRewardNet(env.observation_space, env.action_space, normalize_input_layer=RunningNorm)
         gail_trainer = GAIL(
             demonstrations=trajectories,
@@ -88,14 +79,11 @@ def main():
             allow_variable_horizon=True
         )
         gail_trainer.train(total_timesteps=60000)
-        policy = gail_trainer.policy
-
-    # 5. Gravação Final
-    if policy:
-        policy.save(args.output)
-        print(f"Policy guardada em {args.output}")
+        gail_trainer.gen_algo.save(args.output)
+        print(f"Sucesso: GAIL guardado em {args.output}")
 
     env.close()
+
 
 if __name__ == "__main__":
     main()
